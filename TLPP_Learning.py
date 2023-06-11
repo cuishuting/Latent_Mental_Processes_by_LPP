@@ -5,15 +5,13 @@ from torch.autograd import Variable
 import torch
 import torch.optim as optim
 import matplotlib.pyplot as plt
+from TLPP_Generation import Logic_Model_Generator
 ##################################################################
+np.random.seed(100)
+logic_model_generator = Logic_Model_Generator()
+
 
 class Logic_Model(nn.Module):
-    '''
-    We have
-        1. 7 predicates: 3 mental processes (A,B,C) and 4 action processes (D,E,F,G)
-        2. 8 rules
-    '''
-
     # for example, consider three rules:
     # A and B and Equal(A,B), and Before(A, D), then D;
     # C and Before(C, Not D), then  Not D
@@ -47,100 +45,40 @@ class Logic_Model(nn.Module):
 
         head_predicate_idx = 0
         self.model_parameter[head_predicate_idx] = {}
-        self.model_parameter[head_predicate_idx]['base'] = torch.autograd.Variable((torch.ones(1) * -0.43).double(), requires_grad=True)
+        self.model_parameter[head_predicate_idx]['base'] = torch.tensor([-0.43], dtype=torch.float64, requires_grad=True)
 
         formula_idx = 0
         self.model_parameter[head_predicate_idx][formula_idx] = {}
-        self.model_parameter[head_predicate_idx][formula_idx]['weight'] = torch.autograd.Variable((torch.ones(1) * 0.83).double(), requires_grad=True)
-
+        self.model_parameter[head_predicate_idx][formula_idx]['weight'] = torch.tensor([0.83], dtype=torch.float64, requires_grad=True)
 
         '''
         action
         '''
         head_predicate_idx = 1
         self.model_parameter[head_predicate_idx] = {}
-        self.model_parameter[head_predicate_idx]['base'] = torch.autograd.Variable((torch.ones(1) * -0.33).double(), requires_grad=True)
+        self.model_parameter[head_predicate_idx]['base'] = torch.tensor([-0.33], dtype=torch.float64, requires_grad=True)
 
         formula_idx = 0
         self.model_parameter[head_predicate_idx][formula_idx] = {}
-        self.model_parameter[head_predicate_idx][formula_idx]['weight'] = torch.autograd.Variable((torch.ones(1) * 0.23).double(), requires_grad=True)
+        self.model_parameter[head_predicate_idx][formula_idx]['weight'] = torch.tensor([0.23], dtype=torch.float64, requires_grad=True)
 
         head_predicate_idx = 2
         self.model_parameter[head_predicate_idx] = {}
-        self.model_parameter[head_predicate_idx]['base'] = torch.autograd.Variable((torch.ones(1) * -0.33).double(), requires_grad=True)
+        self.model_parameter[head_predicate_idx]['base'] = torch.tensor([-0.33], dtype=torch.float64, requires_grad=True)
 
         formula_idx = 0
         self.model_parameter[head_predicate_idx][formula_idx] = {}
-        self.model_parameter[head_predicate_idx][formula_idx]['weight'] = torch.autograd.Variable((torch.ones(1) * 0.97).double(), requires_grad=True)
+        self.model_parameter[head_predicate_idx][formula_idx]['weight'] = torch.tensor([0.97], dtype=torch.float64, requires_grad=True)
 
 
 
         #NOTE: set the content of logic rules
-        self.logic_template = self.logic_rule()
-    
-    def logic_rule(self):
-        #TODO: the logic rules encode the prior knowledge
-        # encode rule information
-        '''
-        This function encodes the content of logic rules
-        logic_template = {0:{},1:{},...,6:{}}
-        '''
-        logic_template = {}
-
-
-        '''
-        Mental (0-2)
-        '''
-
-        head_predicate_idx = 0
-        logic_template[head_predicate_idx] = {} # here 0 is the index of the head predicate; we could have multiple head predicates
-
-        #NOTE: rule content: 1 and before(1, 0) \to \neg 0
-        formula_idx = 0
-        logic_template[head_predicate_idx][formula_idx] = {}
-        logic_template[head_predicate_idx][formula_idx]['body_predicate_idx'] = [1]
-        logic_template[head_predicate_idx][formula_idx]['body_predicate_sign'] = [1]  # use 1 to indicate True; use -1 to indicate False
-        logic_template[head_predicate_idx][formula_idx]['head_predicate_sign'] = [0]
-        logic_template[head_predicate_idx][formula_idx]['temporal_relation_idx'] = [[1, 0]]
-        logic_template[head_predicate_idx][formula_idx]['temporal_relation_type'] = [self.BEFORE]
-
-
-        '''
-        Action (3-6)
-        '''
-        head_predicate_idx = 1
-        logic_template[head_predicate_idx] = {}  # here 1 is the index of the head predicate; we could have multiple head predicates
-
-        #NOTE: rule content: 0 and 1 and before(0,1) to 1
-        formula_idx = 0
-        logic_template[head_predicate_idx][formula_idx] = {}
-        logic_template[head_predicate_idx][formula_idx]['body_predicate_idx'] = [0, 1]
-        logic_template[head_predicate_idx][formula_idx]['body_predicate_sign'] = [1, 1]
-        logic_template[head_predicate_idx][formula_idx]['head_predicate_sign'] = [1]
-        logic_template[head_predicate_idx][formula_idx]['temporal_relation_idx'] = [[0, 1]]
-        logic_template[head_predicate_idx][formula_idx]['temporal_relation_type'] = [self.BEFORE]
-
-
-        head_predicate_idx = 2
-        logic_template[head_predicate_idx] = {}  # here 2 is the index of the head predicate; we could have multiple head predicates
-
-        #NOTE: rule content: 0 and 1 and before(0,1) to 2
-        formula_idx = 0
-        logic_template[head_predicate_idx][formula_idx] = {}
-        logic_template[head_predicate_idx][formula_idx]['body_predicate_idx'] = [0, 1]
-        logic_template[head_predicate_idx][formula_idx]['body_predicate_sign'] = [1, 1]
-        logic_template[head_predicate_idx][formula_idx]['head_predicate_sign'] = [1]
-        logic_template[head_predicate_idx][formula_idx]['temporal_relation_idx'] = [[0, 1]]
-        logic_template[head_predicate_idx][formula_idx]['temporal_relation_type'] = [self.BEFORE]
-
-
-        return logic_template
+        self.logic_template = logic_model_generator.logic_rule()
 
     def intensity(self, cur_time, head_predicate_idx, history):
         feature_formula = []
         weight_formula = []
         effect_formula = []
-        #TODO: Check if the head_prediate is a mental predicate
 
         for formula_idx in list(self.logic_template[head_predicate_idx].keys()):
             weight_formula.append(self.model_parameter[head_predicate_idx][formula_idx]['weight'])
@@ -278,11 +216,10 @@ class Logic_Model(nn.Module):
 if __name__ == '__main__':
     import time
     from tqdm import *
-    from TLPP_Generation import Logic_Model_Generator
+
 
     #TODO: learn the model with complete data
-    np.random.seed(100)
-    logic_model_generator = Logic_Model_Generator()
+
 
     #NOTE: some parameters
     num_samples = 10
