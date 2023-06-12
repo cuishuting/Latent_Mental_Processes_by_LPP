@@ -82,8 +82,7 @@ class Logic_Model_Generator:
         formula_idx = 0
         logic_template[head_predicate_idx][formula_idx] = {}
         logic_template[head_predicate_idx][formula_idx]['body_predicate_idx'] = [1]
-        logic_template[head_predicate_idx][formula_idx]['body_predicate_sign'] = [
-            1]  # use 1 to indicate True; use 0 to indicate False
+        logic_template[head_predicate_idx][formula_idx]['body_predicate_sign'] = [1]  # use 1 to indicate True; use 0 to indicate False
         logic_template[head_predicate_idx][formula_idx]['head_predicate_sign'] = [0]
         logic_template[head_predicate_idx][formula_idx]['temporal_relation_idx'] = [[1, 0]]
         logic_template[head_predicate_idx][formula_idx]['temporal_relation_type'] = [self.BEFORE]
@@ -139,23 +138,23 @@ class Logic_Model_Generator:
         return intensity
 
     def get_feature(self, cur_time, head_predicate_idx, history, template):
-        transition_time_dic = {}
+        occur_time_dic = {}
         feature = 0
         for idx, body_predicate_idx in enumerate(template['body_predicate_idx']):
             occur_time = np.array(history[body_predicate_idx]['time'][1:])
             mask = (occur_time <= cur_time)  # find corresponding history
             # mask: filter all the history time points that satisfies the conditions which will boost the head predicate
-            transition_time_dic[body_predicate_idx] = occur_time[mask]
-        transition_time_dic[head_predicate_idx] = [cur_time]
+            occur_time_dic[body_predicate_idx] = occur_time[mask]
+        occur_time_dic[head_predicate_idx] = [cur_time]
         ### get weights
         # compute features whenever any item of the transition_item_dic is nonempty
-        history_transition_len = [len(i) for i in transition_time_dic.values()]
+        history_transition_len = [len(i) for i in occur_time_dic.values()]
         if min(history_transition_len) > 0:
             # need to compute feature using logic rules
-            time_combination = np.array(list(itertools.product(*transition_time_dic.values())))
+            time_combination = np.array(list(itertools.product(*occur_time_dic.values())))
             # get all possible time combinations
             time_combination_dic = {}
-            for i, idx in enumerate(list(transition_time_dic.keys())):
+            for i, idx in enumerate(list(occur_time_dic.keys())):
                 time_combination_dic[idx] = time_combination[:, i]
             temporal_kernel = np.ones(len(time_combination))
             for idx, temporal_relation_idx in enumerate(template['temporal_relation_idx']):
