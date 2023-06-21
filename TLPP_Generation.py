@@ -1,12 +1,12 @@
 import numpy as np
 import itertools
-
+import matplotlib.pyplot as plt
 np.random.seed(1)
 
 
 class Logic_Model_Generator:
 
-    def __init__(self):
+    def __init__(self, time_tolerance, decay_rate):
 
         ### the following parameters are used to manually define the logic rules
         self.num_predicate = 3
@@ -14,11 +14,11 @@ class Logic_Model_Generator:
         self.BEFORE = 'BEFORE'
         self.EQUAL = 'EQUAL'
         self.AFTER = 'AFTER'
-        self.Time_tolerance = 0.32
+        self.Time_tolerance = time_tolerance
         self.mental_predicate_set = [0]
         self.action_predicate_set = [1, 2]
         self.head_predicate_set = [0, 1, 2]  # the index set of all head predicates
-        self.decay_rate = 0.8  # decay kernel
+        self.decay_rate = decay_rate # decay kernel
 
         ### the following parameters are used to generate synthetic data
         ### for the learning part, the following is used to claim variables
@@ -31,30 +31,35 @@ class Logic_Model_Generator:
 
         head_predicate_idx = 0
         self.model_parameter[head_predicate_idx] = {}
-        self.model_parameter[head_predicate_idx]['base'] = -0.4
+        self.model_parameter[head_predicate_idx]['base'] = 0.3
 
         formula_idx = 0
         self.model_parameter[head_predicate_idx][formula_idx] = {}
-        self.model_parameter[head_predicate_idx][formula_idx]['weight'] = 0.8
+        self.model_parameter[head_predicate_idx][formula_idx]['weight'] = 0.7
 
         '''
         action
         '''
         head_predicate_idx = 1
         self.model_parameter[head_predicate_idx] = {}
-        self.model_parameter[head_predicate_idx]['base'] = -0.3
+        self.model_parameter[head_predicate_idx]['base'] = 0.2
+
+        # formula_idx = 0
+        # self.model_parameter[head_predicate_idx][formula_idx] = {}
+        # self.model_parameter[head_predicate_idx][formula_idx]['weight'] = 0.3
 
         formula_idx = 0
         self.model_parameter[head_predicate_idx][formula_idx] = {}
-        self.model_parameter[head_predicate_idx][formula_idx]['weight'] = 0.2
+        self.model_parameter[head_predicate_idx][formula_idx]['weight'] = 0.8
+
 
         head_predicate_idx = 2
         self.model_parameter[head_predicate_idx] = {}
-        self.model_parameter[head_predicate_idx]['base'] = -0.3
+        self.model_parameter[head_predicate_idx]['base'] = 0.1
 
         formula_idx = 0
         self.model_parameter[head_predicate_idx][formula_idx] = {}
-        self.model_parameter[head_predicate_idx][formula_idx]['weight'] = 1.0
+        self.model_parameter[head_predicate_idx][formula_idx]['weight'] = 0.9
 
         # NOTE: set the content of logic rules
         self.logic_template = self.logic_rule()
@@ -68,7 +73,9 @@ class Logic_Model_Generator:
         '''
         Only head predicates may have negative values, because we only record each body predicate's boosted time 
         (states of body predicates are always be 1) 
+        body predicates must happen before head predicate in the same logic rule
         '''
+
         logic_template = {}
 
         '''
@@ -78,12 +85,12 @@ class Logic_Model_Generator:
         head_predicate_idx = 0
         logic_template[head_predicate_idx] = {}
 
-        # NOTE: rule content: 1 and before(1, 0) \to \neg 0
+        # NOTE: rule content: 1 and before(1, 0) to 0
         formula_idx = 0
         logic_template[head_predicate_idx][formula_idx] = {}
         logic_template[head_predicate_idx][formula_idx]['body_predicate_idx'] = [1]
         logic_template[head_predicate_idx][formula_idx]['body_predicate_sign'] = [1]  # use 1 to indicate True; use 0 to indicate False
-        logic_template[head_predicate_idx][formula_idx]['head_predicate_sign'] = [0]
+        logic_template[head_predicate_idx][formula_idx]['head_predicate_sign'] = [1]
         logic_template[head_predicate_idx][formula_idx]['temporal_relation_idx'] = [[1, 0]]
         logic_template[head_predicate_idx][formula_idx]['temporal_relation_type'] = [self.BEFORE]
 
@@ -94,25 +101,26 @@ class Logic_Model_Generator:
         head_predicate_idx = 1
         logic_template[head_predicate_idx] = {}
 
-        # NOTE: rule content: 0 and 1 and before(0,1) to 1
+        # TODO "2 to 1" & "1 and 0 and before(1,0) to \neg 2" contradict ?
+        # NOTE: rule content: 2 and before(2,1) to 1
         formula_idx = 0
         logic_template[head_predicate_idx][formula_idx] = {}
-        logic_template[head_predicate_idx][formula_idx]['body_predicate_idx'] = [0, 1]
-        logic_template[head_predicate_idx][formula_idx]['body_predicate_sign'] = [1, 1]
+        logic_template[head_predicate_idx][formula_idx]['body_predicate_idx'] = [2]
+        logic_template[head_predicate_idx][formula_idx]['body_predicate_sign'] = [1]
         logic_template[head_predicate_idx][formula_idx]['head_predicate_sign'] = [1]
-        logic_template[head_predicate_idx][formula_idx]['temporal_relation_idx'] = [[0, 1]]
+        logic_template[head_predicate_idx][formula_idx]['temporal_relation_idx'] = [[2, 1]]
         logic_template[head_predicate_idx][formula_idx]['temporal_relation_type'] = [self.BEFORE]
 
         head_predicate_idx = 2
         logic_template[head_predicate_idx] = {}
 
-        # NOTE: rule content: 0 and 1 and before(0,1) to 2
+        # NOTE: rule content: 0 and before(0,2) to 2
         formula_idx = 0
         logic_template[head_predicate_idx][formula_idx] = {}
-        logic_template[head_predicate_idx][formula_idx]['body_predicate_idx'] = [0, 1]
-        logic_template[head_predicate_idx][formula_idx]['body_predicate_sign'] = [1, 1]
+        logic_template[head_predicate_idx][formula_idx]['body_predicate_idx'] = [0]
+        logic_template[head_predicate_idx][formula_idx]['body_predicate_sign'] = [1]
         logic_template[head_predicate_idx][formula_idx]['head_predicate_sign'] = [1]
-        logic_template[head_predicate_idx][formula_idx]['temporal_relation_idx'] = [[0, 1]]
+        logic_template[head_predicate_idx][formula_idx]['temporal_relation_idx'] = [[0, 2]]
         logic_template[head_predicate_idx][formula_idx]['temporal_relation_type'] = [self.BEFORE]
 
         return logic_template
@@ -121,10 +129,14 @@ class Logic_Model_Generator:
         feature_formula = []
         weight_formula = []
         effect_formula = []
-
+        # print("head is : ", head_predicate_idx)
         for formula_idx in list(self.logic_template[head_predicate_idx].keys()):
             # range all the formula for the chosen head_predicate
             weight_formula.append(self.model_parameter[head_predicate_idx][formula_idx]['weight'])
+            # print("---->> cur formula idx: ", formula_idx)
+            # print("---->> cur feature is: ", self.get_feature(cur_time=cur_time, head_predicate_idx=head_predicate_idx,
+            #                                         history=history,
+            #                                         template=self.logic_template[head_predicate_idx][formula_idx]))
             feature_formula.append(self.get_feature(cur_time=cur_time, head_predicate_idx=head_predicate_idx,
                                                     history=history,
                                                     template=self.logic_template[head_predicate_idx][formula_idx]))
@@ -132,9 +144,17 @@ class Logic_Model_Generator:
 
         intensity = np.array(weight_formula) * np.array(feature_formula) * np.array(effect_formula)
         intensity = self.model_parameter[head_predicate_idx]['base'] + np.sum(intensity)
-        # if intensity >= 0: intensity = np.max([ intensity, self.model_parameter[head_predicate_idx]['base'] ])
-        # else: intensity = np.exp( self.model_parameter[head_predicate_idx]['base'] + intensity )
-        intensity = np.exp(intensity)
+        # print("INTENSITY before transform: ")
+        # print(intensity)
+        if intensity >= 0:
+            intensity = np.max([intensity, self.model_parameter[head_predicate_idx]['base']])
+        else:
+            # TODO: in this case, the intensity with respect to neg effect will always be positive,
+            #  and it maybe even bigger than some intensity correspond to positive effect
+            intensity = np.exp(intensity)
+        # intensity = np.exp(intensity)
+        # print("intensity after transform")
+        # print(intensity)
         return intensity
 
     def get_feature(self, cur_time, head_predicate_idx, history, template):
@@ -146,7 +166,7 @@ class Logic_Model_Generator:
             # mask: filter all the history time points that satisfies the conditions which will boost the head predicate
             occur_time_dic[body_predicate_idx] = occur_time[mask]
         occur_time_dic[head_predicate_idx] = [cur_time]
-        ### get weights
+        ### get weight
         # compute features whenever any item of the transition_item_dic is nonempty
         history_transition_len = [len(i) for i in occur_time_dic.values()]
         if min(history_transition_len) > 0:
@@ -157,6 +177,8 @@ class Logic_Model_Generator:
             for i, idx in enumerate(list(occur_time_dic.keys())):
                 time_combination_dic[idx] = time_combination[:, i]
             temporal_kernel = np.ones(len(time_combination))
+            # TODO: logic rule without temporal relation constrains, don't step in below for, final feature too big
+
             for idx, temporal_relation_idx in enumerate(template['temporal_relation_idx']):
                 time_difference = time_combination_dic[temporal_relation_idx[0]] - time_combination_dic[temporal_relation_idx[1]]
                 if template['temporal_relation_type'][idx] == 'BEFORE':
@@ -169,7 +191,11 @@ class Logic_Model_Generator:
                     temporal_kernel *= (time_difference > self.Time_tolerance) * np.exp(
                         -self.decay_rate * (cur_time - time_combination_dic[temporal_relation_idx[1]]))
             feature = np.sum(temporal_kernel)
-
+        # print("head")
+        # print(head_predicate_idx)
+        # print("feature")
+        # print(feature)
+        # # TODO:
         return feature
 
     '''
@@ -204,20 +230,30 @@ class Logic_Model_Generator:
                         [self.intensity(time, head_predicate_idx, data[sample_ID]) for head_predicate_idx in
                          self.head_predicate_set])
                 intensity_potential = [sum(item) for item in intensity_potential]
+                # TODO: TUNE intensity max (can automatically set a large value)
+                # intensity_max = 5
                 intensity_max = np.max(np.array(intensity_potential))
-                time_to_event = np.random.exponential(scale=1.0 / intensity_max)  # sample the interarrival time
+                # print("intensity max for cur time: ", intensity_max)
+                # intensity_max = 100
+                time_to_event = np.random.exponential(1 / intensity_max)  # sample the interevent time
+                # print("time to event")
+                # print(time_to_event)
+                # below check whether to accept above sampled time_to_event
                 t = t + time_to_event
-                if t > time_horizon:
-                    break
-                # accept reject
-                intensity_potential = []
-                for head_predicate_idx in self.head_predicate_set:
-                    intensity_potential.append(self.intensity(t, head_predicate_idx, data[sample_ID]))
-                # accept
-                if (np.random.uniform() < np.sum(np.array(intensity_potential)) / intensity_max):
-                    tmp = np.random.multinomial(1, pvals=np.array(intensity_potential) / np.sum(np.array(intensity_potential)))
+                # TODO: check whether keep min()
+                ratio = min(sum([self.intensity(t, head_idx, data[sample_ID]) for head_idx in self.head_predicate_set]) / intensity_max, 1)
+                # print(sum([self.intensity(t, head_idx, data[sample_ID]) for head_idx in self.head_predicate_set]) / intensity_max)
+                flag = np.random.binomial(1, p=ratio)
+                if flag == 1:
+                    # then decide which predicate is going to be triggered at the next event occur time
+                    tmp = np.random.multinomial(1, pvals=np.array(
+                        [self.intensity(t, head_idx, data[sample_ID]) for head_idx in self.head_predicate_set])
+                                                         / np.sum(np.array(
+                        [self.intensity(t, head_idx, data[sample_ID]) for head_idx in self.head_predicate_set])))
                     idx = np.argmax(tmp)
                     data[sample_ID][idx]['time'].append(t)
+                else:
+                    continue
 
         return data
 
@@ -236,6 +272,10 @@ class Logic_Model_Generator:
     #     return intensity
 
 if __name__ == "__main__":
-    logic_model_generator = Logic_Model_Generator()
+    time_tolerance = 0.1
+    decay_rate = 1
+    logic_model_generator = Logic_Model_Generator(time_tolerance, decay_rate)
     data = logic_model_generator.generate_data(num_sample=10, time_horizon=10)
-    np.save('./data.npy', data)
+    # np.save('./data.npy', data)
+    np.save("./data_new.npy", data)
+    print(data)
