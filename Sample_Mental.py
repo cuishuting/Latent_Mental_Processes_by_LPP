@@ -63,7 +63,7 @@ class HazardRate_LSTM is used to get each mental predicate i's hazard rate h_l^i
 
 class HazardRate_LSTM(nn.Module):
     def __init__(self, input_size, hidden_size, num_layers, dropout_prob):
-        self.input_size = input_size  # input_size: action time embedding's size in each time interval
+        self.input_size = input_size  # input_size: "num_action_predicates * time_embedding_dim" in each time interval
         self.hidden_size = hidden_size # hidden_size: 1, represents hazard rate in each time interval
         self.num_layers = num_layers
         self.dropout_rate = dropout_prob
@@ -72,13 +72,46 @@ class HazardRate_LSTM(nn.Module):
 
     def forward(self, data):
         # data has shape: [batch_size, num_time_intervals, num_action_predicates * time_embedding_dim]
-        output, (h_n, c_n) = self.lstm(data)
+        output, (h_n, c_n) = self.lstm(data) # todo ???: initial hidden state ([Z_(l-1)]) and initial cell state is zero, correct?
         # todo: output's shape [batch_size, num_time_intervals, 1], because the hidden_size represents hazard rate h_l^i
         #  for each mental predicate at each time interval
         return output
 
 
-def Sample():
+def get_mentals_cat_distribution_cur_interval(cur_interval, all_mentals_hazard_rate_list, num_mental_types):
+    mentals_cat_prob = []
+    for i in range(num_mental_types):
+        h_i_cur_interval = all_mentals_hazard_rate_list[i][:, cur_interval]
+        p_i_cur_interval = h_i_cur_interval # [batch_size, 1]
+        for j in range(cur_interval):
+            p_i_cur_interval = torch.mul(p_i_cur_interval, 1 - all_mentals_hazard_rate_list[i][:, j])  # [batch_size, 1]
+        mentals_cat_prob.append(p_i_cur_interval)
+    return mentals_cat_prob
+
+
+def Sample(mental_set, action_set, action_time_emb_dim, lstm_layers_num, lstm_dropout_prob, data_one_batch, time_horizon, time_interval_len):
+    """
+    param: data_one_batch: [batch_size, num_time_intervals, num_action_predicates * time_embedding_dim]
+    """
+    num_mental_types = 1 + len(mental_set) # "+ 1" represents the type "no mental predicate occur" at cur time interval
+    lstm_input_size = len(action_set) * action_time_emb_dim
+    all_mentals_hazard_rate_list = []
+    for i in range(num_mental_types): # each mental type has one lstm
+        cur_lstm = HazardRate_LSTM(lstm_input_size, 1, lstm_layers_num, lstm_dropout_prob)
+        cur_h_list, (h_n, c_n) = cur_lstm.forward(data_one_batch) # "cur_h_list": [batch_size, num_time_intervals, 1]
+        all_mentals_hazard_rate_list.append(cur_h_list)
+    num_time_intervals = int(time_horizon / time_interval_len)
+    for l in range(num_time_intervals):
+        mentals_prob_cur_interval = get_mentals_cat_distribution_cur_interval(l, all_mentals_hazard_rate_list, num_mental_types)
+        # list with length num_mental_types, each element's shape is [batch_size, 1], represents the prob that cur mental occurs at cur_interval
+
+
+
+
+
+
+
+
 
 
 data = np.load("./data_new.npy", allow_pickle=True).item()
