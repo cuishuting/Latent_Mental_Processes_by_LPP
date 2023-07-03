@@ -70,23 +70,39 @@ class HazardRate_LSTM(nn.Module):
         self.lstm = nn.LSTM(input_size=self.input_size, hidden_size=self.hidden_size, num_layers=self.num_layers,
                             batch_first=True, dropout=self.dropout_rate)
 
-    def forward(self, data):
+    def forward(self, data, ini_hidden_state):
         # data has shape: [batch_size, num_time_intervals, num_action_predicates * time_embedding_dim]
-        output, (h_n, c_n) = self.lstm(data) # todo ???: initial hidden state ([Z_(l-1)]) and initial cell state is zero, correct?
+        # ini_hidden_state: represent Z_(l-1) in the draft
+        batch_size = data.shape[0]
+        ini_cell_state = torch.zeros((self.num_layers, batch_size, self.hidden_size))
+        output, (h_n, c_n) = self.lstm(data, (ini_hidden_state, ini_cell_state))  # todo ???: initial hidden state ([Z_(l-1)]) and initial cell state is zero, correct?
         # todo: output's shape [batch_size, num_time_intervals, 1], because the hidden_size represents hazard rate h_l^i
         #  for each mental predicate at each time interval
         return output
 
 
 def get_mentals_cat_distribution_cur_interval(cur_interval, all_mentals_hazard_rate_list, num_mental_types):
-    mentals_cat_prob = []
+    # param "all_mentals_hazard_rate_list" has shape: [num_mental_types, batch_size, num_time_intervals, 1]
+    batch_size = all_mentals_hazard_rate_list[0].shape[0]
+    mentals_cat_prob = torch.zeros((num_mental_types, batch_size, 1))
     for i in range(num_mental_types):
-        h_i_cur_interval = all_mentals_hazard_rate_list[i][:, cur_interval]
+        h_i_cur_interval = all_mentals_hazard_rate_list[i, :, cur_interval, :]
         p_i_cur_interval = h_i_cur_interval # [batch_size, 1]
         for j in range(cur_interval):
-            p_i_cur_interval = torch.mul(p_i_cur_interval, 1 - all_mentals_hazard_rate_list[i][:, j])  # [batch_size, 1]
-        mentals_cat_prob.append(p_i_cur_interval)
+            p_i_cur_interval = torch.mul(p_i_cur_interval, 1 - all_mentals_hazard_rate_list[i, :, j, :])  # [batch_size, 1]
+        mentals_cat_prob[i] = p_i_cur_interval
     return mentals_cat_prob
+
+
+def Gumbel_Max_Trick(mentals_unorm_prob_cur_interval): # param shape: [num_mental_types, batch_size, 1]
+    batch_size = mentals_unorm_prob_cur_interval.shape[1]
+    num_mental_types = mentals_unorm_prob_cur_interval.shape[0]
+    std_gumbel_dist = torch.distributions.gumbel.Gumbel(0, 1)
+    gumbel_noise = std_gumbel_dist.sample(sample_shape=(num_mental_types, batch_size, 1))
+    max_types_in_batch = torch.max(torch.log(mentals_unorm_prob_cur_interval) + gumbel_noise, dim=0).indices  # tensor with shape [batch_size, 1]
+    mental_type = [max_types_in_batch[i][0].item() for i in range(batch_size)]
+    # list with length: batch_size, each element is the sampled mental type in cur_interval in cur_batch
+    return mental_type
 
 
 def Sample(mental_set, action_set, action_time_emb_dim, lstm_layers_num, lstm_dropout_prob, data_one_batch, time_horizon, time_interval_len):
@@ -95,15 +111,35 @@ def Sample(mental_set, action_set, action_time_emb_dim, lstm_layers_num, lstm_dr
     """
     num_mental_types = 1 + len(mental_set) # "+ 1" represents the type "no mental predicate occur" at cur time interval
     lstm_input_size = len(action_set) * action_time_emb_dim
-    all_mentals_hazard_rate_list = []
-    for i in range(num_mental_types): # each mental type has one lstm
-        cur_lstm = HazardRate_LSTM(lstm_input_size, 1, lstm_layers_num, lstm_dropout_prob)
-        cur_h_list, (h_n, c_n) = cur_lstm.forward(data_one_batch) # "cur_h_list": [batch_size, num_time_intervals, 1]
-        all_mentals_hazard_rate_list.append(cur_h_list)
+    batch_size = data_one_batch.shape[0]
     num_time_intervals = int(time_horizon / time_interval_len)
+    imputed_mental_states = torch.zeros((batch_size, num_time_intervals, 1))
+    # imputed_mental_states[b_id, interval_id, 0]: mental predicate's type: 0 means no mental occur in cur interval,
+    # others mean corresponding mental occur in cur interval
+
     for l in range(num_time_intervals):
+        all_mentals_hazard_rate_list = torch.zeros((num_mental_types, batch_size, num_time_intervals, 1))
+
+        for i in range(num_mental_types):  # each mental type has one lstm
+            cur_lstm = HazardRate_LSTM(lstm_input_size, 1, lstm_layers_num, lstm_dropout_prob)  # 1 is hidden_size, represent the mental type in former interval Z_(l-1)
+            if l == 0:
+                ini_hidden_state = torch.zeros((lstm_layers_num, batch_size, 1))
+            else:
+                ini_hidden_state = torch.cat([imputed_mental_states[:, l-1, 0]]*lstm_layers_num).reshape(lstm_layers_num, batch_size, 1)
+
+            cur_h_list, (h_n, c_n) = cur_lstm.forward(data_one_batch, ini_hidden_state)   # "cur_h_list": [batch_size, num_time_intervals, 1]
+            all_mentals_hazard_rate_list[i][:] = cur_h_list
+
         mentals_prob_cur_interval = get_mentals_cat_distribution_cur_interval(l, all_mentals_hazard_rate_list, num_mental_types)
-        # list with length num_mental_types, each element's shape is [batch_size, 1], represents the prob that cur mental occurs at cur_interval
+        # shape: [num_mental_types, batch_size, 1], represents the prob that cur mental occurs at cur_interval
+        sampled_mental_type = Gumbel_Max_Trick(mentals_prob_cur_interval)
+        # shape: list with length batch_size, each element is the sampled mental type in cur_interval in cur_batch
+
+        for b_id in range(batch_size):
+            imputed_mental_states[b_id, l, 0] = sampled_mental_type[b_id]
+
+
+
 
 
 
