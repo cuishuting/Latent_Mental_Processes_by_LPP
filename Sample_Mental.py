@@ -138,6 +138,7 @@ def Sample(mental_set, action_set, action_time_emb_dim, lstm_layers_num, lstm_dr
         for b_id in range(batch_size):
             imputed_mental_states[b_id, l, 0] = sampled_mental_type[b_id]
 
+    return imputed_mental_states  # [batch_size, num_time_intervals, 1]
 
 
 
@@ -150,6 +151,7 @@ def Sample(mental_set, action_set, action_time_emb_dim, lstm_layers_num, lstm_dr
 
 
 
-data = np.load("./data_new.npy", allow_pickle=True).item()
-action_embedding = get_action_pre_time_embedding(data, 3, 10, 0.001, action_predicate_set)
-print(action_embedding)
+
+# data = np.load("./data_new.npy", allow_pickle=True).item()
+# action_embedding = get_action_pre_time_embedding(data, 3, 10, 0.001, action_predicate_set)
+# print(action_embedding)
