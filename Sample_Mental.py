@@ -2,10 +2,20 @@ import numpy as np
 import torch.nn as nn
 import torch
 import torch.optim as optim
+import matplotlib.pyplot as plt
 # TODO: get action predicates' time's embedding, corresponding to "f(D) = h" in the draft
 
 mental_predicate_set = [0]
 action_predicate_set = [1, 2]
+data = np.load("./data_new.npy", allow_pickle=True).item()
+action_time_emb_dim = 3
+time_horizon = 10
+time_interval_len = 0.1
+lstm_layers_num = 2
+lstm_dropout_prob = 0.2
+batch_size = 5
+num_batches = int(len(data) / batch_size)
+p_l_i = []
 
 
 def get_action_pre_time_embedding(data, embedding_dim, time_horizon, time_interval_len, action_predicate_set):
@@ -63,12 +73,14 @@ class HazardRate_LSTM is used to get each mental predicate i's hazard rate h_l^i
 
 class HazardRate_LSTM(nn.Module):
     def __init__(self, input_size, hidden_size, num_layers, dropout_prob):
+        super(HazardRate_LSTM, self).__init__()
         self.input_size = input_size  # input_size: "num_action_predicates * time_embedding_dim" in each time interval
-        self.hidden_size = hidden_size # hidden_size: 1, represents hazard rate in each time interval
+        self.hidden_size = hidden_size  # hidden_size: num_mentals_type, represents each mental type's hazard rate in each time interval
         self.num_layers = num_layers
         self.dropout_rate = dropout_prob
         self.lstm = nn.LSTM(input_size=self.input_size, hidden_size=self.hidden_size, num_layers=self.num_layers,
                             batch_first=True, dropout=self.dropout_rate)
+        self.sigmoid = nn.Sigmoid()
 
     def forward(self, data, ini_hidden_state):
         # data has shape: [batch_size, num_time_intervals, num_action_predicates * time_embedding_dim]
@@ -76,8 +88,9 @@ class HazardRate_LSTM(nn.Module):
         batch_size = data.shape[0]
         ini_cell_state = torch.zeros((self.num_layers, batch_size, self.hidden_size))
         output, (h_n, c_n) = self.lstm(data, (ini_hidden_state, ini_cell_state))  # todo ???: initial hidden state ([Z_(l-1)]) and initial cell state is zero, correct?
-        # todo: output's shape [batch_size, num_time_intervals, 1], because the hidden_size represents hazard rate h_l^i
+        # todo: output's shape [batch_size, num_time_intervals, num_mentals' type], because the hidden_size represents hazard rate h_l^i
         #  for each mental predicate at each time interval
+        output = self.sigmoid(output)
         return output
 
 
@@ -92,7 +105,7 @@ def get_mentals_cat_distribution_cur_interval(cur_interval, all_mentals_hazard_r
         p_i_cur_interval = h_i_cur_interval # [batch_size]
         for b in range(batch_size):
             cur_last_occur_interval = all_mentals_last_occur_interval[b][i]
-            for j in range(cur_last_occur_interval, cur_interval): # todo: here, range is not [0, cur_interval) but [last_occur_interval, cur_interval)
+            for j in range(int(cur_last_occur_interval), cur_interval): # todo: here, range is not [0, cur_interval) but [last_occur_interval, cur_interval)
                 p_i_cur_interval = torch.mul(p_i_cur_interval, 1 - all_mentals_hazard_rate_list[:, j, i])  # [batch_size]
         mentals_cat_prob[:, i] = p_i_cur_interval
     return mentals_cat_prob
@@ -121,6 +134,8 @@ def Sample(mental_set, action_set, action_time_emb_dim, lstm_layers_num, lstm_dr
     imputed_mental_states = torch.zeros((batch_size, num_time_intervals, num_mental_types))
     # imputed_mental_states[b_id, interval_id, :]: zeros/one-hot vector with length num_mental_types,
     # represents mental occurring state in cur interval
+    # todo: pl_i_sum_in_each_interval is used to see the values of pl_i_sum in each interval
+    # pl_i_sum_in_each_interval = torch.zeros((batch_size, num_time_intervals))
     all_mentals_last_occur_interval = np.zeros((batch_size, num_mental_types))
     for l in range(num_time_intervals):
         cur_lstm = HazardRate_LSTM(lstm_input_size, num_mental_types, lstm_layers_num, lstm_dropout_prob)
@@ -134,6 +149,7 @@ def Sample(mental_set, action_set, action_time_emb_dim, lstm_layers_num, lstm_dr
         # shape: [batch_size, num_mental_types], represents the prob that cur mental occurs at cur_interval
         # todo: add bernoulli distribution before gumble max trick to see whether a mental occurs in cur_interval or not
         all_mentals_prob_sum_cur_interval = torch.sum(mentals_prob_cur_interval, dim=1)  # shape: [batch_size]
+        # pl_i_sum_in_each_interval[:, l] = all_mentals_prob_sum_cur_interval
         mentals_occur_or_not_matrix = torch.bernoulli(all_mentals_prob_sum_cur_interval)  # shape: [batch_size], 0: no mental occur, 1: some mental occur
         if torch.max(mentals_occur_or_not_matrix).item() == 0: # no event will happen in this interval
             continue
@@ -145,26 +161,29 @@ def Sample(mental_set, action_set, action_time_emb_dim, lstm_layers_num, lstm_dr
             # shape: [num_mentals_occur_batches, num_mental_types]
             sampled_mental_type = Gumbel_Max_Trick(selected_batch_mentals_prob)
             # list with length: occur_batch_size, each element is the sampled mental type in cur_interval in cur_batch
-            for b_id in range(batch_idx_mental_occur):
+
+            for b_id in range(len(batch_idx_mental_occur)):
                 one_hot_occur_mental = torch.zeros(num_mental_types)
                 one_hot_occur_mental[sampled_mental_type[b_id]] = 1
-                imputed_mental_states[b_id, l, :] = one_hot_occur_mental
-                all_mentals_last_occur_interval[b_id, sampled_mental_type[b_id]] = l
+                imputed_mental_states[batch_idx_mental_occur[b_id], l, :] = one_hot_occur_mental
+                all_mentals_last_occur_interval[batch_idx_mental_occur[b_id], sampled_mental_type[b_id]] = l
 
+    # pl_i_sum_in_each_interval = torch.mean(pl_i_sum_in_each_interval, dim=0)
+    # print(pl_i_sum_in_each_interval.shape)
+    # print(pl_i_sum_in_each_interval)
     return imputed_mental_states  # [batch_size, num_time_intervals, 1]
 
 
 
 
+action_embedding = get_action_pre_time_embedding(data, action_time_emb_dim, time_horizon, time_interval_len, action_predicate_set)
+# print(action_embedding.shape)  # [10, 100, 6]
+
+for b in range(num_batches):
+    data_one_batch = action_embedding[b*batch_size : (b+1)*batch_size, :, :]
+    imputed_mental_states = Sample(mental_predicate_set, action_predicate_set, action_time_emb_dim, lstm_layers_num,
+                                   lstm_dropout_prob, data_one_batch, time_horizon, time_interval_len)
+# data_one_batch: [batch_size, num_time_intervals, num_action_predicates * time_embedding_dim]
 
 
 
-
-
-
-
-
-
-# data = np.load("./data_new.npy", allow_pickle=True).item()
-# action_embedding = get_action_pre_time_embedding(data, 3, 10, 0.001, action_predicate_set)
-# print(action_embedding)
